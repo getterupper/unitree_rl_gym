@@ -27,6 +27,18 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     """Calculates torques from position commands"""
     return (target_q - q) * kp + (target_dq - dq) * kd
 
+def load_target_jt(file, offset):
+    one_target_jt = np.load(f"{file}").astype(np.float32)
+    target_jt = one_target_jt[np.newaxis, :]
+    target_jt += offset
+
+    size = one_target_jt.shape[0]
+    return target_jt, size
+
+def sample_int_from_float(x):
+    if int(x) == x:
+        return int(x)
+    return int(x) if np.random.rand() < (x - int(x)) else int(x) + 1
 
 if __name__ == "__main__":
     # get config file name from command line
@@ -61,6 +73,9 @@ if __name__ == "__main__":
         
         cmd = np.array(config["cmd_init"], dtype=np.float32)
 
+        human_filename = config["human_filename"]
+        human_freq = config["human_freq"]
+
     # define context variables
     action = np.zeros(num_actions, dtype=np.float32)
     target_dof_pos = default_angles.copy()
@@ -75,6 +90,34 @@ if __name__ == "__main__":
 
     # load policy
     policy = torch.jit.load(policy_path)
+
+    # load target joint
+    num_envs = 1
+    dt = simulation_dt * control_decimation
+    target_jt_seq, target_jt_seq_len = load_target_jt(human_filename, default_angles)
+    num_target_jt_seq, max_target_jt_seq_len, dim_target_jt = target_jt_seq.shape
+    print(f"Loaded target joint trajectories of shape {target_jt_seq.shape}")
+    target_jt_i = 0
+    target_jt_j = np.zeros(num_envs, dtype=np.int_)
+    target_jt_dt = 1 / human_freq
+    target_jt_update_steps = target_jt_dt / dt # not necessary integer
+    assert(dt <= target_jt_dt)
+    target_jt_update_steps_int = sample_int_from_float(target_jt_update_steps)
+    target_jt = None
+    delayed_obs_target_jt = None
+    delayed_obs_target_jt_steps = 0
+    delayed_obs_target_jt_steps_int = sample_int_from_float(delayed_obs_target_jt_steps)
+
+    # update target joint
+    target_jt = target_jt_seq[target_jt_i, target_jt_j]
+    delayed_obs_target_jt = target_jt_seq[target_jt_i, np.maximum(target_jt_j - delayed_obs_target_jt_steps_int, np.array(0))]
+    resample_i = np.zeros(num_envs, dtype=np.bool)
+    if counter % target_jt_update_steps_int == 0:
+        target_jt_j += 1
+        jt_eps_end_bool = target_jt_j >= target_jt_seq_len
+        target_jt_j = np.where(jt_eps_end_bool, np.zeros_like(target_jt_j), target_jt_j)
+        target_jt_update_steps_int = sample_int_from_float(target_jt_update_steps)
+        delayed_obs_target_jt_steps_int = sample_int_from_float(delayed_obs_target_jt_steps)
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
         # Close the viewer automatically after simulation_duration wall-seconds.
@@ -114,12 +157,24 @@ if __name__ == "__main__":
                 obs[9 : 9 + num_actions] = qj
                 obs[9 + num_actions : 9 + 2 * num_actions] = dqj
                 obs[9 + 2 * num_actions : 9 + 3 * num_actions] = action
-                obs[9 + 3 * num_actions : 9 + 3 * num_actions + 2] = np.array([sin_phase, cos_phase])
+                obs[9 + 3 * num_actions: 19 + 3 * num_actions] = delayed_obs_target_jt * 1.0  # obs_scales.dof_pos
+
                 obs_tensor = torch.from_numpy(obs).unsqueeze(0)
                 # policy inference
                 action = policy(obs_tensor).detach().numpy().squeeze()
                 # transform action to target_dof_pos
                 target_dof_pos = action * action_scale + default_angles
+            
+            # update target joint
+            target_jt = target_jt_seq[target_jt_i, target_jt_j]
+            delayed_obs_target_jt = target_jt_seq[target_jt_i, np.maximum(target_jt_j - delayed_obs_target_jt_steps_int, np.array(0))]
+            resample_i = np.zeros(num_envs, dtype=np.bool)
+            if counter % target_jt_update_steps_int == 0:
+                target_jt_j += 1
+                jt_eps_end_bool = target_jt_j >= target_jt_seq_len
+                target_jt_j = np.where(jt_eps_end_bool, np.zeros_like(target_jt_j), target_jt_j)
+                target_jt_update_steps_int = sample_int_from_float(target_jt_update_steps)
+                delayed_obs_target_jt_steps_int = sample_int_from_float(delayed_obs_target_jt_steps)
 
             # Pick up changes to the physics state, apply perturbations, update options from GUI.
             viewer.sync()

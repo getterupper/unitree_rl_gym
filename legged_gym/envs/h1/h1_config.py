@@ -102,7 +102,7 @@ class H1RoughCfg( LeggedRobotCfg ):
     
     class human:
         delay = 0.0 # delay in seconds
-        freq = 10
+        freq = 20
         resample_on_env_reset = True
         filename = '/mnt/c/Users/24050/Desktop/Robotic2025/unitree_rl_gym/legged_gym/data/h1_test_v2_freq20.npy'
 
