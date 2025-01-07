@@ -41,3 +41,6 @@ class Config:
 
             self.num_actions = config["num_actions"]
             self.num_obs = config["num_obs"]
+
+            self.human_filename = config["human_filename"]
+            self.human_freq = config["human_freq"]

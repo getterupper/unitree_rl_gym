@@ -19,6 +19,18 @@ from common.rotation_helper import get_gravity_orientation, transform_imu_data
 from common.remote_controller import RemoteController, KeyMap
 from config import Config
 
+def load_target_jt(file, offset):
+    one_target_jt = np.load(f"{file}").astype(np.float32)
+    target_jt = one_target_jt[np.newaxis, :]
+    target_jt += offset
+
+    size = one_target_jt.shape[0]
+    return target_jt, size
+
+def sample_int_from_float(x):
+    if int(x) == x:
+        return int(x)
+    return int(x) if np.random.rand() < (x - int(x)) else int(x) + 1
 
 class Controller:
     def __init__(self, config: Config) -> None:
@@ -35,6 +47,9 @@ class Controller:
         self.obs = np.zeros(config.num_obs, dtype=np.float32)
         self.cmd = np.array([0.0, 0, 0])
         self.counter = 0
+
+        # human retargeted poses
+        self._init_target_jt()
 
         if config.msg_type == "hg":
             # g1 and h1_2 use the hg msg type
@@ -71,6 +86,34 @@ class Controller:
             init_cmd_hg(self.low_cmd, self.mode_machine_, self.mode_pr_)
         elif config.msg_type == "go":
             init_cmd_go(self.low_cmd, weak_motor=self.config.weak_motor)
+    
+    def _init_target_jt(self):
+        self.num_envs = 1
+        self.dt = self.config.control_dt
+        self.target_jt_seq, self.target_jt_seq_len = load_target_jt(self.config.human_filename, config.default_angles)
+        self.num_target_jt_seq, self.max_target_jt_seq_len, self.dim_target_jt = self.target_jt_seq.shape
+        print(f"Loaded target joint trajectories of shape {self.target_jt_seq.shape}")
+        self.target_jt_i = 0
+        self.target_jt_j = np.zeros(self.num_envs, dtype=np.int_)
+        self.target_jt_dt = 1 / self.config.human_freq
+        self.target_jt_update_steps = self.target_jt_dt / self.dt # not necessary integer
+        assert(self.dt <= self.target_jt_dt)
+        self.target_jt_update_steps_int = sample_int_from_float(self.target_jt_update_steps)
+        self.target_jt = None
+        self.delayed_obs_target_jt = None
+        self.delayed_obs_target_jt_steps = 0
+        self.delayed_obs_target_jt_steps_int = sample_int_from_float(self.delayed_obs_target_jt_steps)
+        self.update_target_jt()
+
+    def update_target_jt(self):
+        self.target_jt = self.target_jt_seq[self.target_jt_i, self.target_jt_j]
+        self.delayed_obs_target_jt = self.target_jt_seq[self.target_jt_i, torch.maximum(self.target_jt_j - self.delayed_obs_target_jt_steps_int, torch.tensor(0))]
+        if self.counter % self.target_jt_update_steps_int == 0:
+            self.target_jt_j += 1
+            jt_eps_end_bool = self.target_jt_j >= self.target_jt_seq_len
+            self.target_jt_j = torch.where(jt_eps_end_bool, torch.zeros_like(self.target_jt_j), self.target_jt_j)
+            self.target_jt_update_steps_int = sample_int_from_float(self.target_jt_update_steps)
+            self.delayed_obs_target_jt_steps_int = sample_int_from_float(self.delayed_obs_target_jt_steps)
 
     def LowStateHgHandler(self, msg: LowStateHG):
         self.low_state = msg
@@ -175,11 +218,11 @@ class Controller:
         qj_obs = (qj_obs - self.config.default_angles) * self.config.dof_pos_scale
         dqj_obs = dqj_obs * self.config.dof_vel_scale
         ang_vel = ang_vel * self.config.ang_vel_scale
-        period = 0.8
-        count = self.counter * self.config.control_dt
-        phase = count % period / period
-        sin_phase = np.sin(2 * np.pi * phase)
-        cos_phase = np.cos(2 * np.pi * phase)
+        # period = 0.8
+        # count = self.counter * self.config.control_dt
+        # phase = count % period / period
+        # sin_phase = np.sin(2 * np.pi * phase)
+        # cos_phase = np.cos(2 * np.pi * phase)
 
         self.cmd[0] = self.remote_controller.ly
         self.cmd[1] = self.remote_controller.lx * -1
@@ -192,8 +235,7 @@ class Controller:
         self.obs[9 : 9 + num_actions] = qj_obs
         self.obs[9 + num_actions : 9 + num_actions * 2] = dqj_obs
         self.obs[9 + num_actions * 2 : 9 + num_actions * 3] = self.action
-        self.obs[9 + num_actions * 3] = sin_phase
-        self.obs[9 + num_actions * 3 + 1] = cos_phase
+        self.obs[9 + num_actions * 3 : 19 + num_actions * 3] = self.delayed_obs_target_jt * 1.0  # obs_scales.dof_pos
 
         # Get the action from the policy network
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
@@ -201,6 +243,8 @@ class Controller:
         
         # transform action to target_dof_pos
         target_dof_pos = self.config.default_angles + self.action * self.config.action_scale
+
+        self.update_target_jt()
 
         # Build low cmd
         for i in range(len(self.config.leg_joint2motor_idx)):

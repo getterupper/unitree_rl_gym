@@ -111,7 +111,6 @@ if __name__ == "__main__":
     # update target joint
     target_jt = target_jt_seq[target_jt_i, target_jt_j]
     delayed_obs_target_jt = target_jt_seq[target_jt_i, np.maximum(target_jt_j - delayed_obs_target_jt_steps_int, np.array(0))]
-    resample_i = np.zeros(num_envs, dtype=np.bool)
     if counter % target_jt_update_steps_int == 0:
         target_jt_j += 1
         jt_eps_end_bool = target_jt_j >= target_jt_seq_len
@@ -145,11 +144,11 @@ if __name__ == "__main__":
                 gravity_orientation = get_gravity_orientation(quat)
                 omega = omega * ang_vel_scale
 
-                period = 0.8
-                count = counter * simulation_dt
-                phase = count % period / period
-                sin_phase = np.sin(2 * np.pi * phase)
-                cos_phase = np.cos(2 * np.pi * phase)
+                # period = 0.8
+                # count = counter * simulation_dt
+                # phase = count % period / period
+                # sin_phase = np.sin(2 * np.pi * phase)
+                # cos_phase = np.cos(2 * np.pi * phase)
 
                 obs[:3] = omega
                 obs[3:6] = gravity_orientation
@@ -168,7 +167,6 @@ if __name__ == "__main__":
             # update target joint
             target_jt = target_jt_seq[target_jt_i, target_jt_j]
             delayed_obs_target_jt = target_jt_seq[target_jt_i, np.maximum(target_jt_j - delayed_obs_target_jt_steps_int, np.array(0))]
-            resample_i = np.zeros(num_envs, dtype=np.bool)
             if counter % target_jt_update_steps_int == 0:
                 target_jt_j += 1
                 jt_eps_end_bool = target_jt_j >= target_jt_seq_len
