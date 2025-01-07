@@ -26,9 +26,9 @@ class H1RoughCfg( LeggedRobotCfg ):
         }
     
     class env(LeggedRobotCfg.env):
-        # 3 + 3 + 3 + 10 + 10 + 10 + 2 = 41
-        num_observations = 41
-        num_privileged_obs = 44
+        # 3 + 3 + 3 + 10 + 10 + 10 + 10 = 49
+        num_observations = 49
+        num_privileged_obs = 52
         num_actions = 10
       
 
@@ -88,7 +88,7 @@ class H1RoughCfg( LeggedRobotCfg ):
             orientation = -1.0
             base_height = -10.0
             dof_acc = -2.5e-7
-            feet_air_time = 0.0
+            feet_air_time = 1.0
             collision = -1.0
             action_rate = -0.01
             torques = 0.0
@@ -98,6 +98,13 @@ class H1RoughCfg( LeggedRobotCfg ):
             contact_no_vel = -0.2
             feet_swing_height = -20.0
             contact = 0.18
+            target_jt = 1.0
+    
+    class human:
+        delay = 0.0 # delay in seconds
+        freq = 10
+        resample_on_env_reset = True
+        filename = '/mnt/c/Users/24050/Desktop/Robotic2025/unitree_rl_gym/legged_gym/data/h1_test_v2_freq20.npy'
 
 class H1RoughCfgPPO( LeggedRobotCfgPPO ):
     class policy:
