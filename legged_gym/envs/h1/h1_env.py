@@ -233,5 +233,20 @@ class H1Robot(LeggedRobot):
 
     def _reward_target_jt(self):
         # Penalize distance to target joint angles
-        target_jt_error = torch.mean(torch.abs(self.dof_pos - self.target_jt), dim=1)
-        return torch.exp(-4 * target_jt_error)
+        # target_jt_error = torch.mean(torch.abs(self.dof_pos - self.target_jt), dim=1)
+        # return torch.exp(-4 * target_jt_error)
+        target_jt_error = torch.norm(self.dof_pos - self.target_jt, dim=1)
+        return torch.exp(-2 * target_jt_error) - 0.2 * target_jt_error.clamp(0, 0.5)
+    
+    def _reward_foot_slip(self):
+        """
+        Calculates the reward for minimizing foot slip. The reward is based on the contact forces 
+        and the speed of the feet. A contact threshold is used to determine if the foot is in contact 
+        with the ground. The speed of the foot is calculated and scaled by the contact condition.
+        """
+        contact = self.contact_forces[:, self.feet_indices, 2] > 5.
+        foot_speed_norm = torch.norm(self.rigid_state[:, self.feet_indices, 7:9], dim=2)
+        rew = torch.sqrt(foot_speed_norm)
+        rew *= contact
+        return torch.sum(rew, dim=1)
+        

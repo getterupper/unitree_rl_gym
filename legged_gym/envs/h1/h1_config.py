@@ -98,7 +98,8 @@ class H1RoughCfg( LeggedRobotCfg ):
             contact_no_vel = -0.2
             feet_swing_height = -20.0
             contact = 0.18
-            target_jt = 1.0
+            target_jt = 6.4
+            foot_slip = -1.0
     
     class human:
         delay = 0.0 # delay in seconds

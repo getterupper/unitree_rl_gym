@@ -44,4 +44,4 @@ num_obs: 49  # 41
 max_cmd: [0.8, 0.5, 1.57]
 
 human_filename: '/mnt/c/Users/24050/Desktop/Robotic2025/unitree_rl_gym/legged_gym/data/h1_test_v2_freq20.npy'
-human_freq: 10
+human_freq: 20
