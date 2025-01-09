@@ -93,7 +93,8 @@ if __name__ == "__main__":
 
     # load target joint
     num_envs = 1
-    dt = simulation_dt * control_decimation
+    # dt = simulation_dt * control_decimation
+    dt = simulation_dt
     target_jt_seq, target_jt_seq_len = load_target_jt(human_filename, default_angles)
     num_target_jt_seq, max_target_jt_seq_len, dim_target_jt = target_jt_seq.shape
     print(f"Loaded target joint trajectories of shape {target_jt_seq.shape}")
