@@ -2,3 +2,4 @@
 #  SPDX-License-Identifier: BSD-3-Clause
 
 from .rollout_storage import RolloutStorage
+from .replay_buffer import ReplayBuffer

@@ -160,3 +160,6 @@ cython_debug/
 
 # logs
 logs
+
+# AMP
+datasets/

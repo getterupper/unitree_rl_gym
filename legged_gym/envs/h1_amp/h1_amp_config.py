@@ -1,6 +1,7 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
+import glob
 
-class H1RoughCfg( LeggedRobotCfg ):
+class H1AMPCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 1.0] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
@@ -26,10 +27,14 @@ class H1RoughCfg( LeggedRobotCfg ):
         }
     
     class env(LeggedRobotCfg.env):
-        # 3 + 3 + 3 + 10 + 10 + 10 + 10 = 49
-        num_observations = 49
-        num_privileged_obs = 52
+        # 3 + 3 + 3 + 10 + 10 + 10 = 39
+        num_observations = 39
+        num_privileged_obs = 42
         num_actions = 10
+
+        # amp
+        ref_state_init = True
+        amp_motion_files = glob.glob('datasets/motions_AMASS/*/*/*')
       
 
     class domain_rand(LeggedRobotCfg.domain_rand):
@@ -98,16 +103,10 @@ class H1RoughCfg( LeggedRobotCfg ):
             contact_no_vel = -0.2
             feet_swing_height = -20.0
             contact = 0.18
-            target_jt = 6.4
             foot_slip = -1.0
-    
-    class human:
-        delay = 0.0 # delay in seconds
-        freq = 20
-        resample_on_env_reset = True
-        filename = '{LEGGED_GYM_ROOT_DIR}/legged_gym/data/h1_test_v2_freq20.npy'
 
-class H1RoughCfgPPO( LeggedRobotCfgPPO ):
+class H1AMPCfgPPO( LeggedRobotCfgPPO ):
+    runner_class_name = "AMPOnPolicyRunner"
     class policy:
         init_noise_std = 0.8
         actor_hidden_dims = [32]
@@ -119,10 +118,21 @@ class H1RoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
+        amp_replay_buffer_size = 1000000
+        num_learning_epochs = 5
+        num_mini_batches = 4
     class runner( LeggedRobotCfgPPO.runner ):
         policy_class_name = "ActorCriticRecurrent"
+        algorithm_class_name = "AMPPPO"
         max_iterations = 10000
         run_name = ''
-        experiment_name = 'h1'
+        experiment_name = 'h1_amp'
 
-  
+        amp_reward_coef = 2.0
+        amp_motion_files = glob.glob('datasets/motions_AMASS/*/*/*')
+        amp_num_preload_transitions = 2000000
+        amp_task_reward_lerp = 0.3
+        amp_discr_hidden_dims = [1024, 512]
+
+        min_normalized_std = [0.05] * 10
+

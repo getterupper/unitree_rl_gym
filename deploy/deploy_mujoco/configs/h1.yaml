@@ -25,5 +25,5 @@ num_obs: 49  # 41
 
 cmd_init: [0.5, 0, 0]
 
-human_filename: '/mnt/c/Users/24050/Desktop/Robotic2025/unitree_rl_gym/legged_gym/data/h1_test_v2_freq20.npy'
+human_filename: "{LEGGED_GYM_ROOT_DIR}/legged_gym/data/h1_test_v2_freq20.npy"
 human_freq: 20
