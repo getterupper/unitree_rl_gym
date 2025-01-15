@@ -27,14 +27,14 @@ class H1AMPCfg( LeggedRobotCfg ):
         }
     
     class env(LeggedRobotCfg.env):
-        # 3 + 3 + 3 + 10 + 10 + 10 = 39
-        num_observations = 39
-        num_privileged_obs = 42
+        # 3 + 3 + 3 + 10 + 10 + 10 + 2 = 41
+        num_observations = 41
+        num_privileged_obs = 44
         num_actions = 10
 
         # amp
         ref_state_init = True
-        amp_motion_files = glob.glob('datasets/motions_AMASS/*/*/*')
+        amp_motion_files = glob.glob('datasets/motions_Mocap/*')
       
 
     class domain_rand(LeggedRobotCfg.domain_rand):
@@ -129,7 +129,7 @@ class H1AMPCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'h1_amp'
 
         amp_reward_coef = 2.0
-        amp_motion_files = glob.glob('datasets/motions_AMASS/*/*/*')
+        amp_motion_files = glob.glob('datasets/motions_Mocap/*')
         amp_num_preload_transitions = 2000000
         amp_task_reward_lerp = 0.3
         amp_discr_hidden_dims = [1024, 512]

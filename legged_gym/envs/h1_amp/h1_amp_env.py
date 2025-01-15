@@ -8,6 +8,7 @@ import numpy as np
 from legged_gym.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from isaacgym.torch_utils import *
 from rsl_rl.datasets.motion_loader import AMPLoader
+from rsl_rl.datasets.exbody_motion_loader import ExBodyAMPLoader
 import time
 
 def sample_int_from_float(x):
@@ -44,7 +45,7 @@ class H1AMPRobot(LeggedRobot):
 
         # amp
         if self.cfg.env.ref_state_init:
-            self.amp_loader = AMPLoader(motion_files=self.cfg.env.amp_motion_files, device=self.device, time_between_frames=self.dt)
+            self.amp_loader = ExBodyAMPLoader(motion_files=self.cfg.env.amp_motion_files, device=self.device, time_between_frames=self.dt)
 
         self.init_done = True
     
@@ -69,6 +70,7 @@ class H1AMPRobot(LeggedRobot):
         noise_vec[9:9+self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
         noise_vec[9+self.num_actions:9+2*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
         noise_vec[9+2*self.num_actions:9+3*self.num_actions] = 0. # previous actions
+        noise_vec[9+3*self.num_actions:9+3*self.num_actions+2] = 0. # sin/cos phase
         
         return noise_vec
 
@@ -166,8 +168,10 @@ class H1AMPRobot(LeggedRobot):
         return env_ids, terminal_amp_states
 
     def get_amp_observations(self):
+        root_state = self.root_states[..., 0:13]
         joint_pos = self.dof_pos
-        return joint_pos
+        joint_vel = self.dof_vel
+        return torch.cat([root_state, joint_pos, joint_vel], dim=-1).float().to(self.device)
     
     def _post_physics_step_callback(self):
         self.update_feet_state()
@@ -203,8 +207,8 @@ class H1AMPRobot(LeggedRobot):
         # reset robot states
         if self.cfg.env.ref_state_init:
             frames = self.amp_loader.get_full_frame_batch(len(env_ids))
-            self._reset_dofs_amp(env_ids, frames)  # TODO: is needed?
-            self._reset_root_states(env_ids)
+            self._reset_dofs_amp(env_ids, frames)
+            self._reset_root_states_amp(env_ids, frames)
         else:
             self._reset_dofs(env_ids)
             self._reset_root_states(env_ids)
@@ -238,23 +242,52 @@ class H1AMPRobot(LeggedRobot):
             env_ids (List[int]): Environemnt ids
             frames: AMP frames to initialize motion with
         """
-        self.dof_pos[env_ids] = frames
-        self.dof_vel[env_ids] = 0.
+        self.dof_pos[env_ids] = frames[..., 13:23]
+        self.dof_vel[env_ids] = frames[..., 23:33]
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
     
+    def _reset_root_states_amp(self, env_ids, frames):
+        """ Resets ROOT states position and velocities of selected environmments
+            Sets base position based on the curriculum
+            Selects randomized base velocities within -0.5:0.5 [m/s, rad/s]
+        Args:
+            env_ids (List[int]): Environemnt ids
+        """
+        # base position
+        root_pos = frames[..., 0:3]
+        root_pos[:, :2] = root_pos[:, :2] + self.env_origins[env_ids, :2]
+        self.root_states[env_ids, :3] = root_pos
+
+        root_orn = frames[..., 3:7]
+        self.root_states[env_ids, 3:7] = root_orn
+
+        # base velocities
+        # [7:10]: lin vel, [10:13]: ang vel
+        self.root_states[env_ids, 7:10] = frames[..., 7:10]
+        self.root_states[env_ids, 10:13] = frames[..., 10:13]
+
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                     gymtorch.unwrap_tensor(self.root_states),
+                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
     def compute_observations(self):
         """ Computes observations
         """
+        sin_phase = torch.sin(2 * np.pi * self.phase ).unsqueeze(1)
+        cos_phase = torch.cos(2 * np.pi * self.phase ).unsqueeze(1)
         self.obs_buf = torch.cat((  self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
                                     (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
                                     self.dof_vel * self.obs_scales.dof_vel,
                                     self.actions,
+                                    sin_phase,
+                                    cos_phase
                                     ),dim=-1)
         self.privileged_obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
@@ -263,6 +296,8 @@ class H1AMPRobot(LeggedRobot):
                                     (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
                                     self.dof_vel * self.obs_scales.dof_vel,
                                     self.actions,
+                                    sin_phase,
+                                    cos_phase
                                     ),dim=-1)
 
         # add perceptive inputs if not blind

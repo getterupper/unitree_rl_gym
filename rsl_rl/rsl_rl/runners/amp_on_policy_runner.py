@@ -42,6 +42,7 @@ from rsl_rl.modules import ActorCritic, ActorCriticRecurrent
 from rsl_rl.env import VecEnv
 from rsl_rl.algorithms.amp_discriminator import AMPDiscriminator
 from rsl_rl.datasets.motion_loader import AMPLoader
+from rsl_rl.datasets.exbody_motion_loader import ExBodyAMPLoader
 from rsl_rl.utils.utils import Normalizer
 
 class AMPOnPolicyRunner:
@@ -67,7 +68,7 @@ class AMPOnPolicyRunner:
                                                         self.env.num_actions,
                                                         **self.policy_cfg).to(self.device)
 
-        amp_data = AMPLoader(
+        amp_data = ExBodyAMPLoader(
             device, time_between_frames=self.env.dt,
             motion_files=self.cfg["amp_motion_files"],
             preload_transitions=True,

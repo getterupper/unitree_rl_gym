@@ -41,7 +41,11 @@ def play(args):
 
     for i in range(10*int(env.max_episode_length)):
         actions = policy(obs.detach())
-        obs, _, rews, dones, infos = env.step(actions.detach())
+        # obs, _, rews, dones, infos = env.step(actions.detach())
+        if 'amp' in args.task:
+            obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
+        else:
+            obs, _, rews, dones, infos = env.step(actions.detach())
 
 if __name__ == '__main__':
     EXPORT_POLICY = True

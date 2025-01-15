@@ -69,11 +69,11 @@ class AMPLoader:
             self,
             device,
             time_between_frames,
-            motion_files=glob.glob('datasets/motions_ACCAD/*/*'),
+            motion_files=glob.glob('datasets/motions_AMASS/*/*/*'),
             preload_transitions=False,
             num_preload_transitions=1000000,
             ):
-        """Expert dataset provides AMP observations from ACCAD dataset.
+        """Expert dataset provides AMP observations from AMASS dataset.
 
         time_between_frames: Amount of time in seconds between transition.
         """
