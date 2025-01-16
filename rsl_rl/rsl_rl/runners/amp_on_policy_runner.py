@@ -51,6 +51,7 @@ class AMPOnPolicyRunner:
                  env: VecEnv,
                  train_cfg,
                  log_dir=None,
+                 is_train=True,
                  device='cpu'):
 
         self.cfg=train_cfg["runner"]
@@ -67,18 +68,18 @@ class AMPOnPolicyRunner:
                                                         num_critic_obs,
                                                         self.env.num_actions,
                                                         **self.policy_cfg).to(self.device)
-
+        self.is_train = is_train
         amp_data = ExBodyAMPLoader(
             device, time_between_frames=self.env.dt,
             motion_files=self.cfg["amp_motion_files"],
-            preload_transitions=True,
+            preload_transitions=self.is_train,
             num_preload_transitions=train_cfg['runner']['amp_num_preload_transitions'])
-        amp_normalizer = Normalizer(amp_data.amp_dim)
+        amp_normalizer = Normalizer(amp_data.part_amp_dim)
         discriminator = AMPDiscriminator(
-            amp_data.amp_dim * 2,
+            amp_data.part_amp_dim * 2,
             train_cfg['runner']['amp_reward_coef'],
             train_cfg['runner']['amp_discr_hidden_dims'], device,
-            train_cfg['runner']['amp_task_reward_lerp']).to(self.device)
+            train_cfg['runner']['amp_reward_lerp']).to(self.device)
 
         # self.discr: AMPDiscriminator = AMPDiscriminator()
         alg_class = eval(self.cfg["algorithm_class_name"]) # AMPPPO

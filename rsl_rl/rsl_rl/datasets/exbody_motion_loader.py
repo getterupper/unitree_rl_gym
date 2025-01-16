@@ -13,6 +13,7 @@ from isaacgym.torch_utils import *
 from .utils import torch_utils
 
 import pdb
+import yaml
 
 '''
      0: 'pelvis',
@@ -74,7 +75,7 @@ class ExBodyAMPLoader:
             self,
             device,
             time_between_frames,
-            motion_files=glob.glob('datasets/self.motion_infos_Mocap/*'),
+            motion_files=glob.glob('datasets/motions_Mocap/*/*'),
             preload_transitions=False,
             num_preload_transitions=1000000,
             save_poses=False,
@@ -96,11 +97,17 @@ class ExBodyAMPLoader:
         self.dof_offsets = [0, 3, 4, 5, 8, 9, 10, 11, 
                             14, 15, 16, 19, 20, 21]  # 14
         self.num_dof = self.dof_offsets[-1]
+        
+        self.file_infos_path = 'rsl_rl/rsl_rl/datasets/poselib/data/configs/motions_autogen_all_no_run_jump.yaml'
+        with open(self.file_infos_path, 'r', encoding='utf-8') as f:
+            result = yaml.load(f.read(), Loader=yaml.FullLoader)
+            self.file_infos = result['motions']
 
         self.dof_indices_sim = torch.tensor([0, 1, 2, 5, 6, 7, 11, 12, 13, 16, 17, 18], device=self.device, dtype=torch.long)
         self.dof_indices_motion = torch.tensor([2, 0, 1, 7, 5, 6, 12, 11, 13, 17, 16, 18], device=self.device, dtype=torch.long)
 
         self.amp_dim = 33  # 3 + 4 + 3 + 3 + 10 + 10
+        self.part_amp_dim = 20
 
         self.motion_infos = []
         self.motion_idxs = []
@@ -108,6 +115,11 @@ class ExBodyAMPLoader:
         self.motion_num_frames = []
 
         for i, motion_file in enumerate(motion_files):
+            name = motion_file.split('/')[-1].split('.')[0]
+            curr_info = self.file_infos[name]
+            if 'walk' not in curr_info['description']:
+                continue
+            
             curr_motion = SkeletonMotion.from_file(motion_file)
             
             motion_fps = curr_motion.fps
@@ -132,7 +144,9 @@ class ExBodyAMPLoader:
             self.motion_lens.append(motion_len)
             self.motion_num_frames.append(frame_num)
 
+            # save_poses = True
             if save_poses:
+                name = motion_file.split('/')[-1].split('.')[0]
                 time_matrix = np.zeros(frame_num)
                 delta_time_matrix = np.zeros(frame_num)
                 stance_mask_left = np.zeros(frame_num)
@@ -141,13 +155,15 @@ class ExBodyAMPLoader:
                     time_matrix[j] = self.dt * j
                     delta_time_matrix[j] = self.dt
 
-                joints = np.concatenate((time_matrix.reshape(-1, 1), delta_time_matrix.reshape(-1, 1), curr_dof_pos[..., :10], stance_mask_left.reshape(-1, 1), stance_mask_right.reshape(-1, 1)), axis=1)
+                curr_dof_pos = reindex_motion_dof(curr_dof_pos, self.dof_indices_sim, self.dof_indices_motion)
+
+                joints = np.concatenate((time_matrix.reshape(-1, 1), delta_time_matrix.reshape(-1, 1), curr_dof_pos.cpu().numpy()[..., :10], stance_mask_left.reshape(-1, 1), stance_mask_right.reshape(-1, 1)), axis=1)
                 J_head = np.array(['time', 'delta_t',
                                 'left_leg_pitch_joint', 'left_leg_roll_joint', 'left_leg_yaw_joint', 'left_knee_joint', 'left_ankle_pitch_joint', 'left_ankle_roll_joint',
                                 'right_leg_pitch_joint', 'right_leg_roll_joint', 'right_leg_yaw_joint', 'right_knee_joint', 'right_ankle_pitch_joint', 'right_ankle_roll_joint',
                                 'stance_mask_left', 'stance_mask_right'])
                 J_header_string = ','.join(J_head)
-                np.savetxt(f'h1_test_60fps.csv', joints, delimiter=',', fmt='%.8e', header=J_header_string, comments='')
+                np.savetxt(f'./tmp/{name}_60fps.csv', joints, delimiter=',', fmt='%.8e', header=J_header_string, comments='')
 
         self.motion_lens = np.array(self.motion_lens)
         self.motion_num_frames = np.array(self.motion_num_frames)
@@ -190,31 +206,94 @@ class ExBodyAMPLoader:
         idx_low, idx_high = np.floor(p * n).astype(np.int), np.ceil(p * n).astype(np.int)
         blend = torch.tensor(p * n - idx_low, device=self.device, dtype=torch.float32).unsqueeze(-1)
 
+        all_frame_info = torch.zeros(len(traj_idxs), self.part_amp_dim, device=self.device)
+        
+        for traj_idx in set(traj_idxs):
+            traj_mask = traj_idxs == traj_idx
+
+            # root_pos_low = self.gts[traj_idx][idx_low, 0]
+            # root_pos_high = self.gts[traj_idx][idx_high, 0]
+            # root_pos = (1.0 - blend) * root_pos_low + blend * root_pos_high
+
+            # root_rot_low = self.grs[traj_idx][idx_low, 0]
+            # root_rot_high = self.grs[traj_idx][idx_high, 0]
+            # root_rot = torch_utils.slerp(root_rot_low, root_rot_high, blend)
+
+            # root_vel = self.grvs[traj_idx][idx_low]
+            # root_ang_vel = self.gravs[traj_idx][idx_low]
+            
+            # heading_rot = torch_utils.calc_heading_quat_inv(root_rot)
+            # local_root_vel = quat_rotate(heading_rot, root_vel)
+            # local_root_ang_vel = quat_rotate(heading_rot, root_ang_vel)
+
+            # dof_pos_low = self.dps[traj_idx][idx_low, :10]
+            # dof_pos_high = self.dps[traj_idx][idx_high, :10]
+            # dof_pos = (1 - blend) * dof_pos_low + blend * dof_pos_high
+            local_rot_low = self.lrs[traj_idx][idx_low[traj_mask]]
+            local_rot_high = self.lrs[traj_idx][idx_high[traj_mask]]
+            local_rot = torch_utils.slerp(local_rot_low, local_rot_high, torch.unsqueeze(blend[traj_mask], axis=-1))
+            dof_pos = self._local_rotation_to_dof(local_rot)
+            dof_pos = reindex_motion_dof(dof_pos, self.dof_indices_sim, self.dof_indices_motion)
+            dof_pos = dof_pos[..., :10]
+
+            dof_vel = self.dvs[traj_idx][idx_low[traj_mask]]
+            dof_vel = reindex_motion_dof(dof_vel, self.dof_indices_sim, self.dof_indices_motion)
+            dof_vel = dof_vel[..., :10]
+
+            curr_traj_info = torch.cat([dof_pos, dof_vel], dim=-1).float().to(self.device)
+
+            all_frame_info[traj_mask] = curr_traj_info
+        
+        return all_frame_info
+    
+    def get_full_frame_batch_rsi(self, num_frames):
+        traj_idxs = self.traj_idx_sample_batch(num_frames)
+        times = self.traj_time_sample_batch(traj_idxs)
+        return self.get_full_frame_at_time_batch_rsi(traj_idxs, times)
+    
+    def get_full_frame_at_time_batch_rsi(self, traj_idxs, times):
+        p = times / self.motion_lens[traj_idxs]
+        n = self.motion_num_frames[traj_idxs]
+        idx_low, idx_high = np.floor(p * n).astype(np.int), np.ceil(p * n).astype(np.int)
+        blend = torch.tensor(p * n - idx_low, device=self.device, dtype=torch.float32).unsqueeze(-1)
+
         all_frame_info = torch.zeros(len(traj_idxs), self.amp_dim, device=self.device)
         
         for traj_idx in set(traj_idxs):
             traj_mask = traj_idxs == traj_idx
 
-            root_pos_low = self.gts[traj_idx][idx_low, 0]
-            root_pos_high = self.gts[traj_idx][idx_high, 0]
-            root_pos = (1.0 - blend) * root_pos_low + blend * root_pos_high
+            root_pos_low = self.gts[traj_idx][idx_low[traj_mask], 0]
+            root_pos_high = self.gts[traj_idx][idx_high[traj_mask], 0]
+            root_pos = (1.0 - blend[traj_mask]) * root_pos_low + blend[traj_mask] * root_pos_high
 
-            root_rot_low = self.grs[traj_idx][idx_low, 0]
-            root_rot_high = self.grs[traj_idx][idx_high, 0]
-            root_rot = torch_utils.slerp(root_rot_low, root_rot_high, blend)
+            root_rot_low = self.grs[traj_idx][idx_low[traj_mask], 0]
+            root_rot_high = self.grs[traj_idx][idx_high[traj_mask], 0]
+            root_rot = torch_utils.slerp(root_rot_low, root_rot_high, blend[traj_mask])
 
-            root_vel = self.grvs[traj_idx][idx_low]
-            root_ang_vel = self.gravs[traj_idx][idx_low]
+            root_vel = self.grvs[traj_idx][idx_low[traj_mask]]
+            root_ang_vel = self.gravs[traj_idx][idx_low[traj_mask]]
+            
+            heading_rot = torch_utils.calc_heading_quat_inv(root_rot)
+            local_root_vel = quat_rotate(heading_rot, root_vel)
+            local_root_ang_vel = quat_rotate(heading_rot, root_ang_vel)
 
-            dof_pos_low = self.dps[traj_idx][idx_low, :10]
-            dof_pos_high = self.dps[traj_idx][idx_high, :10]
-            dof_pos = (1 - blend) * dof_pos_low + blend * dof_pos_high
+            # dof_pos_low = self.dps[traj_idx][idx_low, :10]
+            # dof_pos_high = self.dps[traj_idx][idx_high, :10]
+            # dof_pos = (1 - blend) * dof_pos_low + blend * dof_pos_high
+            local_rot_low = self.lrs[traj_idx][idx_low[traj_mask]]
+            local_rot_high = self.lrs[traj_idx][idx_high[traj_mask]]
+            local_rot = torch_utils.slerp(local_rot_low, local_rot_high, torch.unsqueeze(blend[traj_mask], axis=-1))
+            dof_pos = self._local_rotation_to_dof(local_rot)
+            dof_pos = reindex_motion_dof(dof_pos, self.dof_indices_sim, self.dof_indices_motion)
+            dof_pos = dof_pos[..., :10]
 
-            dof_vel = self.dvs[traj_idx][idx_low, :10]
+            dof_vel = self.dvs[traj_idx][idx_low[traj_mask]]
+            dof_vel = reindex_motion_dof(dof_vel, self.dof_indices_sim, self.dof_indices_motion)
+            dof_vel = dof_vel[..., :10]
 
             curr_traj_info = torch.cat([root_pos, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel], dim=-1).float().to(self.device)
 
-            all_frame_info[traj_mask] = curr_traj_info[traj_mask]
+            all_frame_info[traj_mask] = curr_traj_info
         
         return all_frame_info
     
@@ -225,24 +304,32 @@ class ExBodyAMPLoader:
         idx_low, idx_high = int(np.floor(p * n)), int(np.ceil(p * n))
         blend = p * n - idx_low
 
-        root_pos_low = self.gts[traj_idx][idx_low, 0]
-        root_pos_high = self.gts[traj_idx][idx_high, 0]
-        root_pos = (1.0 - blend) * root_pos_low + blend * root_pos_high
+        # root_pos_low = self.gts[traj_idx][idx_low, 0]
+        # root_pos_high = self.gts[traj_idx][idx_high, 0]
+        # root_pos = (1.0 - blend) * root_pos_low + blend * root_pos_high
 
-        root_rot_low = self.grs[traj_idx][idx_low, 0]
-        root_rot_high = self.grs[traj_idx][idx_high, 0]
-        root_rot = torch_utils.slerp(root_rot_low, root_rot_high, blend)
+        # root_rot_low = self.grs[traj_idx][idx_low, 0]
+        # root_rot_high = self.grs[traj_idx][idx_high, 0]
+        # root_rot = torch_utils.slerp(root_rot_low, root_rot_high, blend)
 
-        root_vel = self.grvs[traj_idx][idx_low]
-        root_ang_vel = self.gravs[traj_idx][idx_low]
+        # root_vel = self.grvs[traj_idx][idx_low]
+        # root_ang_vel = self.gravs[traj_idx][idx_low]
 
-        dof_pos_low = self.dps[traj_idx][idx_low, :10]
-        dof_pos_high = self.dps[traj_idx][idx_high, :10]
-        dof_pos = (1 - blend) * dof_pos_low + blend * dof_pos_high
+        # dof_pos_low = self.dps[traj_idx][idx_low, :10]
+        # dof_pos_high = self.dps[traj_idx][idx_high, :10]
+        # dof_pos = (1 - blend) * dof_pos_low + blend * dof_pos_high
+        local_rot_low = self.lrs[traj_idx][idx_low]
+        local_rot_high = self.lrs[traj_idx][idx_high]
+        local_rot = torch_utils.slerp(local_rot_low, local_rot_high, torch.unsqueeze(blend, axis=-1))
+        dof_pos = self._local_rotation_to_dof(local_rot)
+        dof_pos = reindex_motion_dof(dof_pos, self.dof_indices_sim, self.dof_indices_motion)
+        dof_pos = dof_pos[..., :10]
 
-        dof_vel = self.dvs[traj_idx][idx_low, :10]
+        dof_vel = self.dvs[traj_idx][idx_low]
+        dof_vel = reindex_motion_dof(dof_vel, self.dof_indices_sim, self.dof_indices_motion)
+        dof_vel = dof_vel[..., :10]
 
-        curr_traj_info = torch.cat([root_pos, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel], dim=-1).float().to(self.device)
+        curr_traj_info = torch.cat([dof_pos, dof_vel], dim=-1).float().to(self.device)
         
         return curr_traj_info
 
@@ -260,8 +347,6 @@ class ExBodyAMPLoader:
         
         dof_vels.append(dof_vels[-1])
         dof_vels = torch.stack(dof_vels, dim=0)
-
-        dof_vels = reindex_motion_dof(dof_vels, self.dof_indices_sim, self.dof_indices_motion)
         return dof_vels
 
     def _local_rotation_to_dof_vel(self, local_rot0, local_rot1, dt):
@@ -308,8 +393,6 @@ class ExBodyAMPLoader:
             dof_pos.append(frame_dof_pos)
 
         dof_pos = torch.cat(dof_pos, dim=0)
-
-        dof_pos = reindex_motion_dof(dof_pos, self.dof_indices_sim, self.dof_indices_motion)
         return dof_pos
     
     def _local_rotation_to_dof(self, local_rot):

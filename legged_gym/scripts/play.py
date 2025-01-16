@@ -24,13 +24,14 @@ def play(args):
     env_cfg.domain_rand.push_robots = False
 
     env_cfg.env.test = True
+    env_cfg.env.ref_state_init = False
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
     # load policy
     train_cfg.runner.resume = True
-    ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
+    ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg, is_train=False)
     policy = ppo_runner.get_inference_policy(device=env.device)
     
     # export policy as a jit module (used to run it from C++)
@@ -41,6 +42,12 @@ def play(args):
 
     for i in range(10*int(env.max_episode_length)):
         actions = policy(obs.detach())
+        
+        env.commands[:, 0] = 2.5
+        env.commands[:, 1] = 0.
+        env.commands[:, 2] = 0.
+        env.commands[:, 3] = 0.
+        
         # obs, _, rews, dones, infos = env.step(actions.detach())
         if 'amp' in args.task:
             obs, _, rews, dones, infos, _, _ = env.step(actions.detach())

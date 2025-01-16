@@ -168,11 +168,14 @@ class H1AMPRobot(LeggedRobot):
         return env_ids, terminal_amp_states
 
     def get_amp_observations(self):
-        root_state = self.root_states[..., 0:13]
+        root_pos = self.root_states[:, :3]
+        root_rot = self.base_quat
+        local_root_vel = self.base_lin_vel
+        local_root_ang_vel = self.base_ang_vel
         joint_pos = self.dof_pos
         joint_vel = self.dof_vel
-        return torch.cat([root_state, joint_pos, joint_vel], dim=-1).float().to(self.device)
-    
+        return torch.cat([joint_pos, joint_vel], dim=-1)
+
     def _post_physics_step_callback(self):
         self.update_feet_state()
 
@@ -206,9 +209,10 @@ class H1AMPRobot(LeggedRobot):
         
         # reset robot states
         if self.cfg.env.ref_state_init:
-            frames = self.amp_loader.get_full_frame_batch(len(env_ids))
+            frames = self.amp_loader.get_full_frame_batch_rsi(len(env_ids))
             self._reset_dofs_amp(env_ids, frames)
             self._reset_root_states_amp(env_ids, frames)
+            # self._reset_root_states(env_ids)
         else:
             self._reset_dofs(env_ids)
             self._reset_root_states(env_ids)
@@ -258,18 +262,23 @@ class H1AMPRobot(LeggedRobot):
             env_ids (List[int]): Environemnt ids
         """
         # base position
-        root_pos = frames[..., 0:3]
-        root_pos[:, :2] = root_pos[:, :2] + self.env_origins[env_ids, :2]
-        self.root_states[env_ids, :3] = root_pos
+        if self.custom_origins:
+            root_pos = frames[..., :3]
+            root_pos[:, :2] = root_pos[:, :2] + self.env_origins[env_ids, :2]
+            root_pos[:, 2] = root_pos[:, 2] + 0.1
+            self.root_states[env_ids, :3] = root_pos
 
-        root_orn = frames[..., 3:7]
-        self.root_states[env_ids, 3:7] = root_orn
-
-        # base velocities
-        # [7:10]: lin vel, [10:13]: ang vel
-        self.root_states[env_ids, 7:10] = frames[..., 7:10]
-        self.root_states[env_ids, 10:13] = frames[..., 10:13]
-
+            root_quat = frames[..., 3:7]
+            root_vel = frames[..., 7:10]
+            root_ang_vel = frames[..., 10:13]
+            
+            self.root_states[env_ids, 3:7] = root_quat[:]
+            self.root_states[env_ids, 7:10] = root_vel[:]
+            self.root_states[env_ids, 10:13] = root_ang_vel[:]
+        else:
+            self.root_states[env_ids] = self.base_init_state
+            self.root_states[env_ids, :3] += self.env_origins[env_ids]
+        
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.root_states),

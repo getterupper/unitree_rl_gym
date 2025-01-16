@@ -72,7 +72,7 @@ class TaskRegistry():
                             headless=args.headless)
         return env, env_cfg
 
-    def make_alg_runner(self, env, name=None, args=None, train_cfg=None, log_root="default") -> Tuple[AMPOnPolicyRunner, LeggedRobotCfgPPO]:
+    def make_alg_runner(self, env, name=None, args=None, train_cfg=None, log_root="default", is_train=True) -> Tuple[AMPOnPolicyRunner, LeggedRobotCfgPPO]:
         """ Creates the training algorithm  either from a registered namme or from the provided config file.
 
         Args:
@@ -117,7 +117,7 @@ class TaskRegistry():
         train_cfg_dict = class_to_dict(train_cfg)
         # runner = AMPOnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
         if 'amp' in name:
-            runner = AMPOnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
+            runner = AMPOnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device, is_train=is_train)
         else:
             runner = OnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
 

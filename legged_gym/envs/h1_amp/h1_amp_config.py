@@ -34,7 +34,7 @@ class H1AMPCfg( LeggedRobotCfg ):
 
         # amp
         ref_state_init = True
-        amp_motion_files = glob.glob('datasets/motions_Mocap/*')
+        amp_motion_files = glob.glob('datasets/motions_Mocap/*/*')
       
 
     class domain_rand(LeggedRobotCfg.domain_rand):
@@ -86,16 +86,16 @@ class H1AMPCfg( LeggedRobotCfg ):
         soft_dof_pos_limit = 0.9
         base_height_target = 1.05
         class scales( LeggedRobotCfg.rewards.scales ):
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
+            tracking_lin_vel = 2.0 * 1000
+            tracking_ang_vel = 1.0 * 1000
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
             orientation = -1.0
             base_height = -10.0
             dof_acc = -2.5e-7
-            feet_air_time = 1.0
+            feet_air_time = 2.0 * 1000
             collision = -1.0
-            action_rate = -0.01
+            action_rate = -0.02
             torques = 0.0
             dof_pos_limits = -5.0
             alive = 0.15
@@ -103,7 +103,6 @@ class H1AMPCfg( LeggedRobotCfg ):
             contact_no_vel = -0.2
             feet_swing_height = -20.0
             contact = 0.18
-            foot_slip = -1.0
 
 class H1AMPCfgPPO( LeggedRobotCfgPPO ):
     runner_class_name = "AMPOnPolicyRunner"
@@ -128,11 +127,11 @@ class H1AMPCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'h1_amp'
 
-        amp_reward_coef = 2.0
-        amp_motion_files = glob.glob('datasets/motions_Mocap/*')
+        amp_reward_coef = 1.0
+        amp_motion_files = glob.glob('datasets/motions_Mocap/*/*')
         amp_num_preload_transitions = 2000000
-        amp_task_reward_lerp = 0.3
+        amp_reward_lerp = 0.5
         amp_discr_hidden_dims = [1024, 512]
 
-        min_normalized_std = [0.05] * 10
+        min_normalized_std = [0.0] * 10
 

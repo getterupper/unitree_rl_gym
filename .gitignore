@@ -11,6 +11,7 @@ __pycache__
 # vs code
 .vscode
 
+tmp
 logs
 
 # AMP

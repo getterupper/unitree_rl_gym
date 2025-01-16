@@ -433,7 +433,7 @@ class SkeletonState(Serializable):
         if not hasattr(self, "_global_transformation"):
             local_transformation = self.local_transformation
             global_transformation = []
-            parent_indices = self.skeleton_tree.parent_indices.numpy()
+            parent_indices = self.skeleton_tree.parent_indices.cpu().numpy()
             # global_transformation = local_transformation.identity_like()
             for node_index in range(len(self.skeleton_tree)):
                 parent_index = parent_indices[node_index]

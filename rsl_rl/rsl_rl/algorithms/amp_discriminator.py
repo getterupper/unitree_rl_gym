@@ -8,7 +8,7 @@ from rsl_rl.utils import utils
 
 class AMPDiscriminator(nn.Module):
     def __init__(
-            self, input_dim, amp_reward_coef, hidden_layer_sizes, device, task_reward_lerp=0.0):
+            self, input_dim, amp_reward_coef, hidden_layer_sizes, device, reward_lerp=0.0):
         super(AMPDiscriminator, self).__init__()
 
         self.device = device
@@ -27,7 +27,7 @@ class AMPDiscriminator(nn.Module):
         self.trunk.train()
         self.amp_linear.train()
 
-        self.task_reward_lerp = task_reward_lerp
+        self.reward_lerp = reward_lerp
 
     def forward(self, x):
         h = self.trunk(x)
@@ -62,11 +62,12 @@ class AMPDiscriminator(nn.Module):
 
             d = self.amp_linear(self.trunk(torch.cat([state, next_state], dim=-1)))
             reward = self.amp_reward_coef * torch.clamp(1 - (1/4) * torch.square(d - 1), min=0)
-            if self.task_reward_lerp > 0:
-                reward = self._lerp_reward(reward, task_reward.unsqueeze(-1))
+            # if self.reward_lerp > 0:
+                # reward = self._lerp_reward(reward, task_reward.unsqueeze(-1))
+            reward = self._lerp_reward(reward, task_reward.unsqueeze(-1))
             self.train()
         return reward.squeeze(), d
 
     def _lerp_reward(self, disc_r, task_r):
-        r = (1.0 - self.task_reward_lerp) * disc_r + self.task_reward_lerp * task_r
+        r = self.reward_lerp * disc_r + (1 - self.reward_lerp) * task_r
         return r
